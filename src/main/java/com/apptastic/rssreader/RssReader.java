@@ -37,12 +37,7 @@ import java.net.http.HttpResponse;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -62,14 +57,48 @@ import static javax.xml.stream.XMLStreamConstants.START_ELEMENT;
  */
 public class RssReader {
     private static final String LOG_GROUP = "com.apptastic.rssreader";
-    private HttpClient httpClient;
+    private String agent = "";
+    private final Map<String, String> headers = new HashMap<>();
+    private final HttpClient httpClient;
 
     public RssReader() {
+        this.httpClient = createHttpClient();
     }
 
     public RssReader(HttpClient httpClient) {
         Objects.requireNonNull(httpClient, "Http client must not be null");
         this.httpClient = httpClient;
+    }
+
+    /**
+     * Returns the HttpClient being used.
+     * @return the HttpClient that is being used.
+     */
+    public HttpClient getHttpClient(){
+        return httpClient;
+    }
+
+    /**
+     * Sets the user-agent of the HttpClient.
+     * This is completely optional and if not set then it will not send a user-agent header.
+     * @param agent the user-agent to use.
+     * @return updated RSSReader.
+     */
+    public RssReader setUserAgent(String agent){
+        this.agent = agent;
+        return this;
+    }
+
+    /**
+     * Adds an header to the HttpClient.
+     * This is completely optional and if no headers are set then it will not add anything.
+     * @param key the key name of the header.
+     * @param value the value of the header.
+     * @return updated RSSReader.
+     */
+    public RssReader addHeader(String key, String value){
+        this.headers.put(key, value);
+        return this;
     }
 
     /**
@@ -118,19 +147,21 @@ public class RssReader {
     }
 
     protected CompletableFuture<HttpResponse<InputStream>> sendAsyncRequest(String url) {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(25))
-                .header("Accept-Encoding", "gzip")
-                .GET()
-                .build();
+                .header("Accept-Encoding", "gzip");
 
+        if(!agent.isBlank() && !agent.isEmpty())
+            builder.header("User-Agent", agent);
+
+        headers.forEach(builder::header);
         HttpClient client = this.httpClient;
 
         if (client == null) {
             client = createHttpClient();
         }
 
-        return client.sendAsync(req, HttpResponse.BodyHandlers.ofInputStream());
+        return client.sendAsync(builder.GET().build(), HttpResponse.BodyHandlers.ofInputStream());
     }
 
     private Function<HttpResponse<InputStream>, Stream<Item>> processResponse() {
